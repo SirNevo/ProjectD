@@ -30,9 +30,8 @@ jobs:
 
       - name: Extract ffmpeg.exe to root
         run: |
-          powershell -Command ^
-            "$f = Get-ChildItem -Recurse -Filter ffmpeg.exe | Select-Object -First 1; ^
-             Copy-Item $f.FullName ./ffmpeg.exe -Force"
+          $f = Get-ChildItem -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          Copy-Item $f.FullName ./ffmpeg.exe -Force
 
       - name: Build EXE
         run: pyinstaller --onefile --windowed --icon=icon.ico --add-binary "ffmpeg.exe;." down.py

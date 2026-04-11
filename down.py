@@ -31,11 +31,17 @@ def download_links(links, progress_window, progress_bar, status_label):
             status_label.config(text="Finalizing...")
 
     ydl_opts = {
-        "outtmpl": f"{DOWNLOAD_DIR}/%(uploader)s_%(id)s.%(ext)s",
-        "format": "bestvideo+bestaudio/best",
+        # safer filenames
+        "outtmpl": f"{DOWNLOAD_DIR}/%(title)s_%(id)s.%(ext)s",
+
+        # FIX: force compatible video + audio combo (prevents silent files / codec issues)
+        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
+
         "merge_output_format": "mp4",
         "noplaylist": True,
         "progress_hooks": [hook],
+
+        # ffmpeg from bundled app (important for your EXE)
         "ffmpeg_location": BASE_DIR,
     }
 

@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     runs-on: windows-latest
@@ -11,12 +14,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install deps
         run: |
           pip install --upgrade pip
           pip install yt-dlp pyinstaller
@@ -26,18 +28,18 @@ jobs:
           curl -L -o ffmpeg.zip https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
           powershell Expand-Archive ffmpeg.zip -DestinationPath ffmpeg
 
-      - name: Locate ffmpeg
-        run: dir ffmpeg /s
+      - name: Rename ffmpeg for stable path
+        run: |
+          powershell -Command "Get-ChildItem -Recurse -Filter ffmpeg.exe | Select-Object -First 1 | Copy-Item -Destination ffmpeg.exe"
 
       - name: Build EXE
         run: |
           pyinstaller --onefile --windowed ^
             --icon=icon.ico ^
-            --add-binary "ffmpeg\ffmpeg-essentials\bin\ffmpeg.exe;." ^
+            --add-binary "ffmpeg.exe;." ^
             down.py
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: downloader-exe
           path: dist/*

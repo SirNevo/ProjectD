@@ -1,0 +1,40 @@
+name: Build Windows EXE
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install yt-dlp pyinstaller
+
+      - name: Download ffmpeg
+        run: |
+          curl -L -o ffmpeg.zip https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
+          powershell Expand-Archive ffmpeg.zip -DestinationPath ffmpeg
+
+      - name: Build EXE
+        run: |
+          pyinstaller --onefile --windowed ^
+            --icon=icon.ico ^
+            --add-binary "ffmpeg\ffmpeg-*\bin\ffmpeg.exe;." ^
+            down.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: downloader-exe
+          path: dist/*

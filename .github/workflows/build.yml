@@ -26,11 +26,14 @@ jobs:
           curl -L -o ffmpeg.zip https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
           powershell Expand-Archive ffmpeg.zip -DestinationPath ffmpeg
 
+      - name: Locate ffmpeg
+        run: dir ffmpeg /s
+
       - name: Build EXE
         run: |
           pyinstaller --onefile --windowed ^
             --icon=icon.ico ^
-            --add-binary "ffmpeg\ffmpeg-*\bin\ffmpeg.exe;." ^
+            --add-binary "ffmpeg\ffmpeg-essentials\bin\ffmpeg.exe;." ^
             down.py
 
       - name: Upload artifact

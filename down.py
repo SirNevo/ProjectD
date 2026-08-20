@@ -13,7 +13,6 @@ import glob
 # =========================================================
 
 def base_dir():
-
     if getattr(sys, "frozen", False):
         return sys._MEIPASS
 
@@ -30,12 +29,10 @@ BASE_DIR = base_dir()
 # =========================================================
 
 if getattr(sys, "frozen", False):
-
     # PyInstaller EXE
     FFMPEG_LOCATION = BASE_DIR
 
 elif os.name == "nt":
-
     # Windows Python script
     FFMPEG_LOCATION = os.path.join(
         BASE_DIR,
@@ -43,7 +40,6 @@ elif os.name == "nt":
     )
 
 else:
-
     # Linux
     FFMPEG_LOCATION = "/usr/bin"
 
@@ -81,7 +77,6 @@ download_in_progress = False
 # =========================================================
 
 def is_youtube_url(url):
-
     url = url.lower()
 
     return (
@@ -96,18 +91,14 @@ def is_youtube_url(url):
 # =========================================================
 
 def cleanup_part_files():
-
     try:
-
         for path in glob.glob(
             os.path.join(
                 DOWNLOAD_DIR,
                 "*.part"
             )
         ):
-
             try:
-
                 os.remove(path)
 
                 print(
@@ -115,13 +106,11 @@ def cleanup_part_files():
                 )
 
             except Exception as e:
-
                 print(
                     f"Could not remove {path}: {e}"
                 )
 
     except Exception as e:
-
         print(
             f"Part-file cleanup error: {e}"
         )
@@ -132,18 +121,15 @@ def cleanup_part_files():
 # =========================================================
 
 def format_speed(speed):
-
     if not speed:
         return ""
 
     if speed >= 1024 * 1024:
-
         return (
             f"{speed / (1024 * 1024):.2f} MB/s"
         )
 
     if speed >= 1024:
-
         return (
             f"{speed / 1024:.1f} KB/s"
         )
@@ -158,7 +144,6 @@ def format_speed(speed):
 # =========================================================
 
 def format_eta(eta):
-
     if eta is None:
         return ""
 
@@ -168,7 +153,6 @@ def format_eta(eta):
     )
 
     if minutes:
-
         return (
             f"{minutes}m {seconds:02d}s"
         )
@@ -183,11 +167,8 @@ def format_eta(eta):
 # =========================================================
 
 def create_progress_hook():
-
     def hook(d):
-
         status = d.get("status")
-
 
         # -------------------------------------------------
         # DOWNLOADING
@@ -205,14 +186,11 @@ def create_progress_hook():
             )
 
             if total is None:
-
                 total = d.get(
                     "total_bytes_estimate"
                 )
 
-
             if total:
-
                 percent = (
                     downloaded / total
                 ) * 100
@@ -226,9 +204,7 @@ def create_progress_hook():
                 )
 
             else:
-
                 percent = 0
-
 
             speed = d.get(
                 "speed"
@@ -238,14 +214,12 @@ def create_progress_hook():
                 "eta"
             )
 
-
             gui_queue.put((
                 "progress",
                 percent,
                 speed,
                 eta
             ))
-
 
         # -------------------------------------------------
         # FILE FINISHED
@@ -255,9 +229,8 @@ def create_progress_hook():
 
             # Do NOT set progress to 100%.
             #
-            # yt-dlp may still need to merge video/audio.
-            # The worker sends the final success message
-            # only after ydl.download() has completed.
+            # yt-dlp may still need to merge video/audio
+            # or convert audio to MP3.
 
             gui_queue.put((
                 "finalizing"
@@ -271,96 +244,161 @@ def create_progress_hook():
 # =========================================================
 
 def create_ydl_options(
+    download_type="video",
     fallback=False
 ):
 
-    options = {
+    # =====================================================
+    # VIDEO
+    # =====================================================
 
-        # -------------------------------------------------
-        # Output filename
-        # -------------------------------------------------
+    if download_type == "video":
 
-        "outtmpl": (
-            f"{DOWNLOAD_DIR}/"
-            "%(title)s_%(id)s.%(ext)s"
-        ),
+        options = {
 
+            # -------------------------------------------------
+            # Output filename
+            # -------------------------------------------------
 
-        # -------------------------------------------------
-        # BEST AVAILABLE
-        # -------------------------------------------------
-        #
-        # This means:
-        #
-        #   best video + best audio
-        #
-        # or:
-        #
-        #   best combined format
-        #
-        # It does NOT force 360p.
-        #
+            "outtmpl": (
+                f"{DOWNLOAD_DIR}/"
+                "%(title)s_%(id)s.%(ext)s"
+            ),
 
-        "format": (
-            "bv*+ba/b"
-        ),
+            # -------------------------------------------------
+            # BEST AVAILABLE VIDEO
+            # -------------------------------------------------
+            #
+            # Best video + best audio
+            # OR best combined format if that is all available.
+            #
 
+            "format": (
+                "bv*+ba/b"
+            ),
 
-        # -------------------------------------------------
-        # Merge into MP4 when possible
-        # -------------------------------------------------
+            # -------------------------------------------------
+            # Merge into MP4 when possible
+            # -------------------------------------------------
 
-        "merge_output_format": "mp4",
+            "merge_output_format": "mp4",
 
+            # -------------------------------------------------
+            # Don't download playlists
+            # -------------------------------------------------
 
-        # -------------------------------------------------
-        # Don't download playlists
-        # -------------------------------------------------
+            "noplaylist": True,
 
-        "noplaylist": True,
+            # -------------------------------------------------
+            # Progress hook
+            # -------------------------------------------------
 
+            "progress_hooks": [
+                create_progress_hook()
+            ],
 
-        # -------------------------------------------------
-        # Progress hook
-        # -------------------------------------------------
+            # -------------------------------------------------
+            # FFmpeg
+            # -------------------------------------------------
 
-        "progress_hooks": [
-            create_progress_hook()
-        ],
+            "ffmpeg_location": FFMPEG_LOCATION,
 
+            # -------------------------------------------------
+            # Don't overwrite existing files
+            # -------------------------------------------------
 
-        # -------------------------------------------------
-        # FFmpeg
-        # -------------------------------------------------
+            "overwrites": False,
 
-        "ffmpeg_location": FFMPEG_LOCATION,
+            # -------------------------------------------------
+            # Resume partial downloads when possible
+            # -------------------------------------------------
 
+            "continuedl": True,
 
-        # -------------------------------------------------
-        # Don't overwrite existing files
-        # -------------------------------------------------
+            # -------------------------------------------------
+            # Console output
+            # -------------------------------------------------
 
-        "overwrites": False,
+            "quiet": False,
+            "no_warnings": False,
+        }
 
+    # =====================================================
+    # AUDIO / MP3
+    # =====================================================
 
-        # -------------------------------------------------
-        # Resume partial downloads when possible
-        #
-        # Failed .part files are manually removed after
-        # a failed attempt.
-        # -------------------------------------------------
+    else:
 
-        "continuedl": True,
+        options = {
 
+            # -------------------------------------------------
+            # Output filename
+            # -------------------------------------------------
 
-        # -------------------------------------------------
-        # Console output
-        # -------------------------------------------------
+            "outtmpl": (
+                f"{DOWNLOAD_DIR}/"
+                "%(title)s_%(id)s.%(ext)s"
+            ),
 
-        "quiet": False,
+            # -------------------------------------------------
+            # BEST AVAILABLE AUDIO
+            # -------------------------------------------------
 
-        "no_warnings": False,
-    }
+            "format": (
+                "bestaudio/best"
+            ),
+
+            # -------------------------------------------------
+            # Don't download playlists
+            # -------------------------------------------------
+
+            "noplaylist": True,
+
+            # -------------------------------------------------
+            # Progress hook
+            # -------------------------------------------------
+
+            "progress_hooks": [
+                create_progress_hook()
+            ],
+
+            # -------------------------------------------------
+            # FFmpeg
+            # -------------------------------------------------
+
+            "ffmpeg_location": FFMPEG_LOCATION,
+
+            # -------------------------------------------------
+            # Convert downloaded audio to MP3
+            # -------------------------------------------------
+
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "0"
+                }
+            ],
+
+            # -------------------------------------------------
+            # Don't overwrite existing files
+            # -------------------------------------------------
+
+            "overwrites": False,
+
+            # -------------------------------------------------
+            # Resume partial downloads when possible
+            # -------------------------------------------------
+
+            "continuedl": True,
+
+            # -------------------------------------------------
+            # Console output
+            # -------------------------------------------------
+
+            "quiet": False,
+            "no_warnings": False,
+        }
 
 
     # =====================================================
@@ -370,57 +408,49 @@ def create_ydl_options(
     if fallback:
 
         options["extractor_args"] = {
-
             "youtube": {
-
                 "player_client": [
                     "android"
                 ]
-
             }
-
         }
 
-
         # -------------------------------------------------
-        # IMPORTANT:
-        #
-        # Still request the BEST Android format.
-        #
-        # We are NOT forcing format 18.
-        #
-        # If Android exposes 720p, yt-dlp will prefer it.
-        # If Android only exposes 360p, then 360p is used.
+        # Android fallback still uses the best available
+        # format for the selected download type.
         # -------------------------------------------------
 
-        options["format"] = (
-            "bv*+ba/b"
-        )
+        if download_type == "video":
+            options["format"] = (
+                "bv*+ba/b"
+            )
+
+        else:
+            options["format"] = (
+                "bestaudio/best"
+            )
 
 
     return options
 
 
 # =========================================================
-# CHECK WHETHER VIDEO IS ALREADY DOWNLOADED
+# CHECK WHETHER MEDIA IS ALREADY DOWNLOADED
 # =========================================================
 
-def check_existing_download(link):
+def check_existing_download(
+    link,
+    download_type="video"
+):
 
     try:
 
         check_opts = {
-
             "quiet": True,
-
             "no_warnings": True,
-
             "skip_download": True,
-
             "noplaylist": True,
-
         }
-
 
         with yt_dlp.YoutubeDL(
             check_opts
@@ -431,85 +461,56 @@ def check_existing_download(link):
                 download=False
             )
 
-
             if not info:
-
                 return False
-
 
             video_id = info.get(
                 "id"
             )
 
-
             if not video_id:
-
                 return False
 
 
             # -------------------------------------------------
-            # First check using the exact filename yt-dlp
-            # would normally generate.
+            # Check common extensions
             # -------------------------------------------------
 
-            try:
+            if download_type == "audio":
 
-                expected = ydl.prepare_filename(
-                    info
-                )
+                extensions = [
+                    "mp3"
+                ]
 
-                if os.path.exists(
-                    expected
-                ):
+            else:
 
-                    return True
-
-
-            except Exception:
-
-                pass
-
-
-            # -------------------------------------------------
-            # Check common extensions.
-            #
-            # This also catches cases where yt-dlp merged
-            # the final file into MP4.
-            # -------------------------------------------------
-
-            extensions = [
-                "mp4",
-                "mkv",
-                "webm",
-                "mov",
-                "avi",
-                "flv",
-                "m4v"
-            ]
+                extensions = [
+                    "mp4",
+                    "mkv",
+                    "webm",
+                    "mov",
+                    "avi",
+                    "flv",
+                    "m4v"
+                ]
 
 
             for extension in extensions:
 
                 pattern = os.path.join(
-
                     DOWNLOAD_DIR,
-
                     f"*_{video_id}.{extension}"
-
                 )
-
 
                 matches = glob.glob(
                     pattern
                 )
-
 
                 for path in matches:
 
                     if not path.endswith(
                         ".part"
                     ):
-
                         return True
 
 
@@ -531,13 +532,14 @@ def check_existing_download(link):
 
 def download_one(
     link,
+    download_type="video",
     fallback=False
 ):
 
     options = create_ydl_options(
+        download_type=download_type,
         fallback=fallback
     )
-
 
     try:
 
@@ -548,7 +550,6 @@ def download_one(
             result = ydl.download([
                 link
             ])
-
 
             return result == 0
 
@@ -566,7 +567,10 @@ def download_one(
 # DOWNLOAD WORKER
 # =========================================================
 
-def download_links(links):
+def download_links(
+    links,
+    download_type
+):
 
     global download_in_progress
 
@@ -576,11 +580,8 @@ def download_links(links):
             links
         )
 
-
         completed = 0
-
         already_downloaded = 0
-
         failed = 0
 
 
@@ -595,7 +596,6 @@ def download_links(links):
 
             link = link.strip()
 
-
             if not link:
                 continue
 
@@ -608,12 +608,14 @@ def download_links(links):
                 "checking",
                 index,
                 total_links,
-                link
+                link,
+                download_type
             ))
 
 
             if check_existing_download(
-                link
+                link,
+                download_type
             ):
 
                 already_downloaded += 1
@@ -622,7 +624,8 @@ def download_links(links):
                     "already_exists",
                     index,
                     total_links,
-                    link
+                    link,
+                    download_type
                 ))
 
                 continue
@@ -635,12 +638,14 @@ def download_links(links):
             gui_queue.put((
                 "starting",
                 index,
-                total_links
+                total_links,
+                download_type
             ))
 
 
             success = download_one(
                 link,
+                download_type=download_type,
                 fallback=False
             )
 
@@ -652,14 +657,14 @@ def download_links(links):
             if not success:
 
                 # ---------------------------------------------
-                # Remove failed partial files before fallback.
+                # Remove failed partial files
                 # ---------------------------------------------
 
                 cleanup_part_files()
 
 
                 # ---------------------------------------------
-                # Only use Android fallback for YouTube.
+                # Only use Android fallback for YouTube
                 # ---------------------------------------------
 
                 if is_youtube_url(
@@ -668,12 +673,14 @@ def download_links(links):
 
                     gui_queue.put((
                         "fallback",
-                        link
+                        link,
+                        download_type
                     ))
 
 
                     success = download_one(
                         link,
+                        download_type=download_type,
                         fallback=True
                     )
 
@@ -686,7 +693,8 @@ def download_links(links):
 
                         gui_queue.put((
                             "failed",
-                            link
+                            link,
+                            download_type
                         ))
 
                         continue
@@ -698,7 +706,8 @@ def download_links(links):
 
                     gui_queue.put((
                         "failed",
-                        link
+                        link,
+                        download_type
                     ))
 
                     continue
@@ -710,10 +719,10 @@ def download_links(links):
 
             completed += 1
 
-
             gui_queue.put((
                 "success",
-                link
+                link,
+                download_type
             ))
 
 
@@ -726,7 +735,8 @@ def download_links(links):
             completed,
             already_downloaded,
             failed,
-            total_links
+            total_links,
+            download_type
         ))
 
 
@@ -769,17 +779,21 @@ def process_gui_queue():
             if message_type == "checking":
 
                 index = message[1]
-
                 total = message[2]
+                download_type = message[4]
 
+                media_name = (
+                    "audio"
+                    if download_type == "audio"
+                    else "video"
+                )
 
                 status_label.config(
                     text=(
-                        f"Checking video "
+                        f"Checking {media_name} "
                         f"{index}/{total}..."
                     )
                 )
-
 
                 progress_bar["value"] = 0
 
@@ -791,17 +805,21 @@ def process_gui_queue():
             elif message_type == "starting":
 
                 index = message[1]
-
                 total = message[2]
+                download_type = message[3]
 
+                media_name = (
+                    "audio"
+                    if download_type == "audio"
+                    else "video"
+                )
 
                 status_label.config(
                     text=(
-                        f"Downloading "
+                        f"Downloading {media_name} "
                         f"{index}/{total}..."
                     )
                 )
-
 
                 progress_bar["value"] = 0
 
@@ -813,30 +831,23 @@ def process_gui_queue():
             elif message_type == "progress":
 
                 percent = message[1]
-
                 speed = message[2]
-
                 eta = message[3]
 
-
                 progress_bar["value"] = percent
-
 
                 text = (
                     f"Downloading... "
                     f"{percent:.1f}%"
                 )
 
-
                 speed_text = format_speed(
                     speed
                 )
 
-
                 eta_text = format_eta(
                     eta
                 )
-
 
                 if speed_text:
 
@@ -844,13 +855,11 @@ def process_gui_queue():
                         f"  •  {speed_text}"
                     )
 
-
                 if eta_text:
 
                     text += (
                         f"  •  ETA {eta_text}"
                     )
-
 
                 status_label.config(
                     text=text
@@ -874,13 +883,20 @@ def process_gui_queue():
 
             elif message_type == "fallback":
 
-                progress_bar["value"] = 0
+                download_type = message[2]
 
+                media_name = (
+                    "audio"
+                    if download_type == "audio"
+                    else "video"
+                )
+
+                progress_bar["value"] = 0
 
                 status_label.config(
                     text=(
                         "Default method failed. "
-                        "Trying fallback method..."
+                        f"Trying {media_name} fallback..."
                     )
                 )
 
@@ -891,12 +907,20 @@ def process_gui_queue():
 
             elif message_type == "already_exists":
 
-                progress_bar["value"] = 100
+                download_type = message[4]
 
+                media_name = (
+                    "audio"
+                    if download_type == "audio"
+                    else "video"
+                )
+
+                progress_bar["value"] = 100
 
                 status_label.config(
                     text=(
-                        "Video is already downloaded"
+                        f"{media_name.capitalize()} "
+                        "is already downloaded"
                     )
                 )
 
@@ -907,11 +931,21 @@ def process_gui_queue():
 
             elif message_type == "success":
 
+                download_type = message[2]
+
+                media_name = (
+                    "audio"
+                    if download_type == "audio"
+                    else "video"
+                )
+
                 progress_bar["value"] = 100
 
-
                 status_label.config(
-                    text="Download complete"
+                    text=(
+                        f"{media_name.capitalize()} "
+                        "download complete"
+                    )
                 )
 
 
@@ -921,11 +955,21 @@ def process_gui_queue():
 
             elif message_type == "failed":
 
+                download_type = message[2]
+
+                media_name = (
+                    "audio"
+                    if download_type == "audio"
+                    else "video"
+                )
+
                 progress_bar["value"] = 0
 
-
                 status_label.config(
-                    text="Download failed"
+                    text=(
+                        f"{media_name.capitalize()} "
+                        "download failed"
+                    )
                 )
 
 
@@ -937,11 +981,9 @@ def process_gui_queue():
 
                 progress_bar["value"] = 0
 
-
                 status_label.config(
                     text="Unexpected error"
                 )
-
 
                 print(
                     message[1]
@@ -955,20 +997,20 @@ def process_gui_queue():
             elif message_type == "done":
 
                 completed = message[1]
-
                 already_downloaded = message[2]
-
                 failed = message[3]
-
                 total = message[4]
+                download_type = message[5]
+
+                media_name = (
+                    "audio"
+                    if download_type == "audio"
+                    else "video"
+                )
 
 
                 # -------------------------------------------------
-                # IMPORTANT:
-                #
-                # Don't overwrite the "already downloaded"
-                # message with "Download complete" when there
-                # was only one URL.
+                # Single URL
                 # -------------------------------------------------
 
                 if total == 1:
@@ -979,7 +1021,8 @@ def process_gui_queue():
 
                         status_label.config(
                             text=(
-                                "Video is already downloaded"
+                                f"{media_name.capitalize()} "
+                                "is already downloaded"
                             )
                         )
 
@@ -990,7 +1033,8 @@ def process_gui_queue():
 
                         status_label.config(
                             text=(
-                                "Download complete"
+                                f"{media_name.capitalize()} "
+                                "download complete"
                             )
                         )
 
@@ -1001,7 +1045,8 @@ def process_gui_queue():
 
                         status_label.config(
                             text=(
-                                "Download failed"
+                                f"{media_name.capitalize()} "
+                                "download failed"
                             )
                         )
 
@@ -1024,7 +1069,7 @@ def process_gui_queue():
                                     f"Finished: "
                                     f"{completed} downloaded, "
                                     f"{already_downloaded} "
-                                    f"already downloaded"
+                                    "already downloaded"
                                 )
                             )
 
@@ -1033,7 +1078,7 @@ def process_gui_queue():
                             status_label.config(
                                 text=(
                                     f"All {total} "
-                                    f"downloads finished"
+                                    "downloads finished"
                                 )
                             )
 
@@ -1045,14 +1090,14 @@ def process_gui_queue():
                                 f"Finished: "
                                 f"{completed} downloaded, "
                                 f"{already_downloaded} "
-                                f"already downloaded, "
+                                "already downloaded, "
                                 f"{failed} failed"
                             )
                         )
 
 
                 # -------------------------------------------------
-                # Close progress window after 1.5 seconds.
+                # Close progress window after 1.5 seconds
                 # -------------------------------------------------
 
                 progress_window.after(
@@ -1067,7 +1112,7 @@ def process_gui_queue():
 
 
     # ---------------------------------------------------------
-    # Keep processing GUI messages.
+    # Keep processing GUI messages
     # ---------------------------------------------------------
 
     root.after(
@@ -1083,20 +1128,16 @@ def process_gui_queue():
 def start_download():
 
     global download_in_progress
-
     global progress_window
-
     global progress_bar
-
     global status_label
 
 
     # ---------------------------------------------------------
-    # Prevent multiple simultaneous download jobs.
+    # Prevent multiple simultaneous download jobs
     # ---------------------------------------------------------
 
     if download_in_progress:
-
         return
 
 
@@ -1107,19 +1148,26 @@ def start_download():
 
 
     links = [
-
         line.strip()
-
         for line in raw.splitlines()
-
         if line.strip()
-
     ]
 
 
     if not links:
-
         return
+
+
+    # ---------------------------------------------------------
+    # Get selected download type
+    # ---------------------------------------------------------
+
+    download_type = download_type_var.get()
+
+    if download_type == "Audio (MP3)":
+        download_type = "audio"
+    else:
+        download_type = "video"
 
 
     download_in_progress = True
@@ -1133,16 +1181,13 @@ def start_download():
         root
     )
 
-
     progress_window.title(
         "Downloading"
     )
 
-
     progress_window.geometry(
         "520x150"
     )
-
 
     progress_window.resizable(
         False,
@@ -1155,24 +1200,15 @@ def start_download():
     # =========================================================
 
     status_label = tk.Label(
-
         progress_window,
-
         text="Starting...",
-
         anchor="w"
-
     )
 
-
     status_label.pack(
-
         fill="x",
-
         padx=15,
-
         pady=(12, 5)
-
     )
 
 
@@ -1181,24 +1217,15 @@ def start_download():
     # =========================================================
 
     progress_bar = ttk.Progressbar(
-
         progress_window,
-
         length=480,
-
         mode="determinate",
-
         maximum=100
-
     )
 
-
     progress_bar.pack(
-
         padx=15,
-
         pady=10
-
     )
 
 
@@ -1207,13 +1234,12 @@ def start_download():
     # =========================================================
 
     threading.Thread(
-
         target=download_links,
-
-        args=(links,),
-
+        args=(
+            links,
+            download_type
+        ),
         daemon=True
-
     ).start()
 
 
@@ -1223,14 +1249,12 @@ def start_download():
 
 root = tk.Tk()
 
-
 root.title(
     "Downloader"
 )
 
-
 root.geometry(
-    "600x400"
+    "600x460"
 )
 
 
@@ -1239,15 +1263,10 @@ root.geometry(
 # =========================================================
 
 tk.Label(
-
     root,
-
     text="Paste links (one per line):"
-
 ).pack(
-
     pady=5
-
 )
 
 
@@ -1256,22 +1275,56 @@ tk.Label(
 # =========================================================
 
 text_box = scrolledtext.ScrolledText(
-
     root,
-
     width=70,
-
     height=15
+)
 
+text_box.pack(
+    padx=10,
+    pady=10
 )
 
 
-text_box.pack(
+# =========================================================
+# DOWNLOAD TYPE
+# =========================================================
 
-    padx=10,
+download_type_var = tk.StringVar(
+    value="Video (MP4)"
+)
 
-    pady=10
+download_type_frame = tk.Frame(
+    root
+)
 
+download_type_frame.pack(
+    pady=5
+)
+
+
+tk.Label(
+    download_type_frame,
+    text="Download type:"
+).pack(
+    side="left",
+    padx=(0, 8)
+)
+
+
+download_type_menu = ttk.Combobox(
+    download_type_frame,
+    textvariable=download_type_var,
+    values=[
+        "Video (MP4)",
+        "Audio (MP3)"
+    ],
+    state="readonly",
+    width=18
+)
+
+download_type_menu.pack(
+    side="left"
 )
 
 
@@ -1280,17 +1333,11 @@ text_box.pack(
 # =========================================================
 
 tk.Button(
-
     root,
-
     text="Download",
-
     command=start_download
-
 ).pack(
-
     pady=10
-
 )
 
 
@@ -1299,11 +1346,8 @@ tk.Button(
 # =========================================================
 
 root.after(
-
     100,
-
     process_gui_queue
-
 )
 
 

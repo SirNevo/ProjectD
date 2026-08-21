@@ -6,6 +6,39 @@ import os
 import sys
 import queue
 import glob
+import hashlib
+import json
+import tempfile
+import urllib.request
+import subprocess
+
+
+# =========================================================
+# APPLICATION VERSION
+# =========================================================
+
+APP_VERSION = "2.6.9"
+
+
+# =========================================================
+# GITHUB UPDATE SETTINGS
+# =========================================================
+
+# CHANGE THESE TWO VALUES
+APP_VERSION = "2.6.9"
+
+GITHUB_OWNER = "SirNevo"
+GITHUB_REPO = "ProjectD"
+
+UPDATE_JSON_URL = (
+    f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}/"
+    "releases/latest/download/update.json"
+)
+
+EXE_DOWNLOAD_URL = (
+    f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}/"
+    "releases/latest/download/down.exe"
+)
 
 
 # =========================================================
@@ -29,10 +62,12 @@ BASE_DIR = base_dir()
 # =========================================================
 
 if getattr(sys, "frozen", False):
+
     # PyInstaller EXE
     FFMPEG_LOCATION = BASE_DIR
 
 elif os.name == "nt":
+
     # Windows Python script
     FFMPEG_LOCATION = os.path.join(
         BASE_DIR,
@@ -40,6 +75,7 @@ elif os.name == "nt":
     )
 
 else:
+
     # Linux
     FFMPEG_LOCATION = "/usr/bin"
 
@@ -73,10 +109,427 @@ download_in_progress = False
 
 
 # =========================================================
+# AUTO UPDATER
+# =========================================================
+
+def calculate_sha256(file_path):
+
+    sha256 = hashlib.sha256()
+
+    with open(
+        file_path,
+        "rb"
+    ) as f:
+
+        while True:
+
+            data = f.read(
+                1024 * 1024
+            )
+
+            if not data:
+                break
+
+            sha256.update(
+                data
+            )
+
+    return sha256.hexdigest()
+
+
+def download_file(url, destination):
+
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Downloader-Updater"
+        }
+    )
+
+    with urllib.request.urlopen(
+        request,
+        timeout=15
+    ) as response:
+
+        with open(
+            destination,
+            "wb"
+        ) as output:
+
+            while True:
+
+                data = response.read(
+                    1024 * 1024
+                )
+
+                if not data:
+                    break
+
+                output.write(
+                    data
+                )
+
+
+def check_for_update():
+
+    # ---------------------------------------------------------
+    # Only update compiled Windows EXE
+    # ---------------------------------------------------------
+
+    if not getattr(
+        sys,
+        "frozen",
+        False
+    ):
+        return False
+
+    if os.name != "nt":
+        return False
+
+
+    current_exe = os.path.abspath(
+        sys.executable
+    )
+
+
+    # ---------------------------------------------------------
+    # Make sure GitHub repository was configured
+    # ---------------------------------------------------------
+
+    if (
+        GITHUB_OWNER == "YOUR_GITHUB_USERNAME"
+        or
+        GITHUB_REPO == "YOUR_REPOSITORY"
+    ):
+
+        print(
+            "Updater: GitHub repository has not been configured."
+        )
+
+        return False
+
+
+    temp_dir = None
+
+
+    try:
+
+        print(
+            "Updater: Checking for updates..."
+        )
+
+
+        # =====================================================
+        # DOWNLOAD UPDATE INFORMATION
+        # =====================================================
+
+        request = urllib.request.Request(
+            UPDATE_JSON_URL,
+            headers={
+                "User-Agent": "Downloader-Updater"
+            }
+        )
+
+
+        with urllib.request.urlopen(
+            request,
+            timeout=5
+        ) as response:
+
+            update_data = json.loads(
+                response.read().decode(
+                    "utf-8"
+                )
+            )
+
+
+        expected_hash = (
+            update_data
+            .get(
+                "sha256",
+                ""
+            )
+            .strip()
+            .lower()
+        )
+
+
+        if not expected_hash:
+
+            print(
+                "Updater: update.json does not contain a SHA-256 hash."
+            )
+
+            return False
+
+
+        # =====================================================
+        # DISPLAY RELEASE VERSION
+        # =====================================================
+
+        latest_version = (
+            str(
+                update_data.get(
+                    "version",
+                    ""
+                )
+            ).strip()
+        )
+
+
+        if latest_version:
+
+            print(
+                f"Updater: Latest release: {latest_version}"
+            )
+
+        print(
+            f"Updater: Current application version: {APP_VERSION}"
+        )
+
+
+        # =====================================================
+        # CALCULATE CURRENT EXE HASH
+        # =====================================================
+
+        current_hash = calculate_sha256(
+            current_exe
+        ).lower()
+
+
+        print(
+            f"Updater: Current SHA-256: {current_hash}"
+        )
+
+        print(
+            f"Updater: Expected SHA-256: {expected_hash}"
+        )
+
+
+        # =====================================================
+        # ALREADY UP TO DATE
+        # =====================================================
+
+        if current_hash == expected_hash:
+
+            print(
+                "Updater: Application is up to date."
+            )
+
+            return False
+
+
+        # =====================================================
+        # UPDATE AVAILABLE
+        # =====================================================
+
+        print(
+            "Updater: New application build detected."
+        )
+
+
+        # =====================================================
+        # CREATE TEMPORARY DIRECTORY
+        # =====================================================
+
+        temp_dir = tempfile.mkdtemp(
+            prefix="Downloader_Update_"
+        )
+
+
+        new_exe = os.path.join(
+            temp_dir,
+            "Downloader_new.exe"
+        )
+
+
+        # =====================================================
+        # DOWNLOAD NEW EXE
+        # =====================================================
+
+        print(
+            "Updater: Downloading new EXE..."
+        )
+
+
+        download_file(
+            EXE_DOWNLOAD_URL,
+            new_exe
+        )
+
+
+        # =====================================================
+        # MAKE SURE DOWNLOAD EXISTS
+        # =====================================================
+
+        if not os.path.isfile(
+            new_exe
+        ):
+
+            print(
+                "Updater: Downloaded EXE does not exist."
+            )
+
+            return False
+
+
+        downloaded_size = os.path.getsize(
+            new_exe
+        )
+
+
+        if downloaded_size <= 0:
+
+            print(
+                "Updater: Downloaded EXE is empty."
+            )
+
+            return False
+
+
+        print(
+            f"Updater: Downloaded {downloaded_size:,} bytes."
+        )
+
+
+        # =====================================================
+        # VERIFY DOWNLOADED EXE
+        # =====================================================
+
+        downloaded_hash = calculate_sha256(
+            new_exe
+        ).lower()
+
+
+        print(
+            f"Updater: Downloaded SHA-256: {downloaded_hash}"
+        )
+
+
+        if downloaded_hash != expected_hash:
+
+            print(
+                "Updater: SHA-256 verification FAILED."
+            )
+
+            print(
+                "Updater: Existing application will not be replaced."
+            )
+
+            return False
+
+
+        print(
+            "Updater: SHA-256 verification successful."
+        )
+
+
+        # =====================================================
+        # CREATE BATCH UPDATER
+        # =====================================================
+
+        updater_script = os.path.join(
+            temp_dir,
+            "update.bat"
+        )
+
+
+        with open(
+            updater_script,
+            "w",
+            encoding="utf-8"
+        ) as f:
+
+            f.write(
+                f"""@echo off
+setlocal
+
+REM Wait for the old application to close
+timeout /t 2 /nobreak >nul
+
+REM Try replacing the old EXE
+set ATTEMPTS=0
+
+:REPLACE
+
+set /a ATTEMPTS+=1
+
+copy /Y "{new_exe}" "{current_exe}" >nul 2>&1
+
+if not errorlevel 1 goto START
+
+if %ATTEMPTS% GEQ 10 goto FAILED
+
+timeout /t 1 /nobreak >nul
+
+goto REPLACE
+
+
+:START
+
+start "" "{current_exe}"
+
+goto CLEANUP
+
+
+:FAILED
+
+echo Failed to replace application.
+timeout /t 3 /nobreak >nul
+
+goto CLEANUP
+
+
+:CLEANUP
+
+del "%~f0" >nul 2>&1
+
+endlocal
+"""
+            )
+
+
+        # =====================================================
+        # START UPDATER
+        # =====================================================
+
+        print(
+            "Updater: Starting update process..."
+        )
+
+
+        subprocess.Popen(
+            [
+                "cmd",
+                "/c",
+                updater_script
+            ],
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+
+
+        # -----------------------------------------------------
+        # Tell caller to close current application
+        # -----------------------------------------------------
+
+        return True
+
+
+    except Exception as e:
+
+        print(
+            f"Updater error: {e}"
+        )
+
+        return False
+
+
+# =========================================================
 # YOUTUBE DETECTION
 # =========================================================
 
 def is_youtube_url(url):
+
     url = url.lower()
 
     return (
@@ -91,26 +544,34 @@ def is_youtube_url(url):
 # =========================================================
 
 def cleanup_part_files():
+
     try:
+
         for path in glob.glob(
             os.path.join(
                 DOWNLOAD_DIR,
                 "*.part"
             )
         ):
+
             try:
-                os.remove(path)
+
+                os.remove(
+                    path
+                )
 
                 print(
                     f"Removed failed part file: {path}"
                 )
 
             except Exception as e:
+
                 print(
                     f"Could not remove {path}: {e}"
                 )
 
     except Exception as e:
+
         print(
             f"Part-file cleanup error: {e}"
         )
@@ -121,15 +582,18 @@ def cleanup_part_files():
 # =========================================================
 
 def format_speed(speed):
+
     if not speed:
         return ""
 
     if speed >= 1024 * 1024:
+
         return (
             f"{speed / (1024 * 1024):.2f} MB/s"
         )
 
     if speed >= 1024:
+
         return (
             f"{speed / 1024:.1f} KB/s"
         )
@@ -144,6 +608,7 @@ def format_speed(speed):
 # =========================================================
 
 def format_eta(eta):
+
     if eta is None:
         return ""
 
@@ -153,6 +618,7 @@ def format_eta(eta):
     )
 
     if minutes:
+
         return (
             f"{minutes}m {seconds:02d}s"
         )
@@ -167,8 +633,13 @@ def format_eta(eta):
 # =========================================================
 
 def create_progress_hook():
+
     def hook(d):
-        status = d.get("status")
+
+        status = d.get(
+            "status"
+        )
+
 
         # -------------------------------------------------
         # DOWNLOADING
@@ -186,11 +657,13 @@ def create_progress_hook():
             )
 
             if total is None:
+
                 total = d.get(
                     "total_bytes_estimate"
                 )
 
             if total:
+
                 percent = (
                     downloaded / total
                 ) * 100
@@ -204,6 +677,7 @@ def create_progress_hook():
                 )
 
             else:
+
                 percent = 0
 
             speed = d.get(
@@ -214,12 +688,15 @@ def create_progress_hook():
                 "eta"
             )
 
-            gui_queue.put((
-                "progress",
-                percent,
-                speed,
-                eta
-            ))
+            gui_queue.put(
+                (
+                    "progress",
+                    percent,
+                    speed,
+                    eta
+                )
+            )
+
 
         # -------------------------------------------------
         # FILE FINISHED
@@ -232,9 +709,12 @@ def create_progress_hook():
             # yt-dlp may still need to merge video/audio
             # or convert audio to MP3.
 
-            gui_queue.put((
-                "finalizing"
-            ))
+            gui_queue.put(
+                (
+                    "finalizing",
+                )
+            )
+
 
     return hook
 
@@ -247,6 +727,7 @@ def create_ydl_options(
     download_type="video",
     fallback=False
 ):
+
 
     # =====================================================
     # VIDEO
@@ -322,6 +803,7 @@ def create_ydl_options(
             "quiet": False,
             "no_warnings": False,
         }
+
 
     # =====================================================
     # AUDIO / MP3
@@ -415,17 +897,20 @@ def create_ydl_options(
             }
         }
 
+
         # -------------------------------------------------
         # Android fallback still uses the best available
         # format for the selected download type.
         # -------------------------------------------------
 
         if download_type == "video":
+
             options["format"] = (
                 "bv*+ba/b"
             )
 
         else:
+
             options["format"] = (
                 "bestaudio/best"
             )
@@ -511,6 +996,7 @@ def check_existing_download(
                     if not path.endswith(
                         ".part"
                     ):
+
                         return True
 
 
@@ -547,9 +1033,11 @@ def download_one(
             options
         ) as ydl:
 
-            result = ydl.download([
-                link
-            ])
+            result = ydl.download(
+                [
+                    link
+                ]
+            )
 
             return result == 0
 
@@ -604,13 +1092,15 @@ def download_links(
             # CHECK EXISTING DOWNLOAD
             # =================================================
 
-            gui_queue.put((
-                "checking",
-                index,
-                total_links,
-                link,
-                download_type
-            ))
+            gui_queue.put(
+                (
+                    "checking",
+                    index,
+                    total_links,
+                    link,
+                    download_type
+                )
+            )
 
 
             if check_existing_download(
@@ -620,13 +1110,15 @@ def download_links(
 
                 already_downloaded += 1
 
-                gui_queue.put((
-                    "already_exists",
-                    index,
-                    total_links,
-                    link,
-                    download_type
-                ))
+                gui_queue.put(
+                    (
+                        "already_exists",
+                        index,
+                        total_links,
+                        link,
+                        download_type
+                    )
+                )
 
                 continue
 
@@ -635,12 +1127,14 @@ def download_links(
             # DEFAULT METHOD
             # =================================================
 
-            gui_queue.put((
-                "starting",
-                index,
-                total_links,
-                download_type
-            ))
+            gui_queue.put(
+                (
+                    "starting",
+                    index,
+                    total_links,
+                    download_type
+                )
+            )
 
 
             success = download_one(
@@ -671,11 +1165,13 @@ def download_links(
                     link
                 ):
 
-                    gui_queue.put((
-                        "fallback",
-                        link,
-                        download_type
-                    ))
+                    gui_queue.put(
+                        (
+                            "fallback",
+                            link,
+                            download_type
+                        )
+                    )
 
 
                     success = download_one(
@@ -691,11 +1187,13 @@ def download_links(
 
                         failed += 1
 
-                        gui_queue.put((
-                            "failed",
-                            link,
-                            download_type
-                        ))
+                        gui_queue.put(
+                            (
+                                "failed",
+                                link,
+                                download_type
+                            )
+                        )
 
                         continue
 
@@ -704,11 +1202,13 @@ def download_links(
 
                     failed += 1
 
-                    gui_queue.put((
-                        "failed",
-                        link,
-                        download_type
-                    ))
+                    gui_queue.put(
+                        (
+                            "failed",
+                            link,
+                            download_type
+                        )
+                    )
 
                     continue
 
@@ -719,25 +1219,29 @@ def download_links(
 
             completed += 1
 
-            gui_queue.put((
-                "success",
-                link,
-                download_type
-            ))
+            gui_queue.put(
+                (
+                    "success",
+                    link,
+                    download_type
+                )
+            )
 
 
         # =====================================================
         # ALL URLS PROCESSED
         # =====================================================
 
-        gui_queue.put((
-            "done",
-            completed,
-            already_downloaded,
-            failed,
-            total_links,
-            download_type
-        ))
+        gui_queue.put(
+            (
+                "done",
+                completed,
+                already_downloaded,
+                failed,
+                total_links,
+                download_type
+            )
+        )
 
 
     except Exception as e:
@@ -746,10 +1250,12 @@ def download_links(
             f"Worker error: {e}"
         )
 
-        gui_queue.put((
-            "error",
-            str(e)
-        ))
+        gui_queue.put(
+            (
+                "error",
+                str(e)
+            )
+        )
 
 
     finally:
@@ -1164,9 +1670,13 @@ def start_download():
 
     download_type = download_type_var.get()
 
+
     if download_type == "Audio (MP3)":
+
         download_type = "audio"
+
     else:
+
         download_type = "video"
 
 
@@ -1244,6 +1754,29 @@ def start_download():
 
 
 # =========================================================
+# START APPLICATION
+# =========================================================
+
+# The updater MUST run before the main GUI is created.
+#
+# When an update is found, check_for_update() starts
+# update.bat and returns True. The current EXE then exits.
+#
+# The batch file waits for this EXE to close, replaces it,
+# and starts the new version.
+
+if getattr(
+    sys,
+    "frozen",
+    False
+):
+
+    if check_for_update():
+
+        sys.exit(0)
+
+
+# =========================================================
 # MAIN WINDOW
 # =========================================================
 
@@ -1293,6 +1826,7 @@ text_box.pack(
 download_type_var = tk.StringVar(
     value="Video (MP4)"
 )
+
 
 download_type_frame = tk.Frame(
     root
